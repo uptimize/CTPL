@@ -148,9 +148,15 @@ namespace ctpl {
         }
 
         template<typename F, typename... Rest>
-        auto push(F && f, Rest&&... rest) ->std::future<decltype(f(0, rest...))> {
-            auto pck = std::make_shared<std::packaged_task<decltype(f(0, rest...))(thread_id)>>(
-                std::bind(std::forward<F>(f), std::placeholders::_1, std::forward<Rest>(rest)...)
+        auto push(F && f, Rest&&... rest) {
+            auto bound_fcn = [f = std::forward<F>(f), args = std::forward_as_tuple(rest...)] (thread_id id) {
+                return std::apply([f = std::move(f), id](auto &&...rest) {
+                  return f(id, std::forward<Rest>(rest)...);
+                }, std::move(args));
+            };
+            using ret_t = std::result_of_t<F(thread_id, Rest...)>;
+            auto pck = std::make_shared<std::packaged_task<ret_t(thread_id)>>(
+                std::move(bound_fcn)
             );
 
             auto _f = new std::function<void(thread_id id)>([pck](thread_id id) {
